@@ -90,6 +90,24 @@ type UpdateEdgeIngressReq struct {
 	ACP     *ACP    `json:"acp,omitempty"`
 }
 
+// Command defines patch operation to apply on the cluster.
+type Command struct {
+	CreatedAt        time.Time         `json:"createdAt"`
+	SetIngressACP    *SetIngressACP    `json:"setIngressAcp"`
+	DeleteIngressACP *DeleteIngressACP `json:"deleteIngressAcp"`
+}
+
+// SetIngressACP is a command that sets the ACP of an Ingress.
+type SetIngressACP struct {
+	IngressID string `json:"ingressId"`
+	ACPName   string `json:"acpName"`
+}
+
+// DeleteIngressACP is a command that removes the ACP of an Ingress.
+type DeleteIngressACP struct {
+	IngressID string `json:"ingressId"`
+}
+
 type linkClusterReq struct {
 	KubeID   string `json:"kubeId"`
 	Platform string `json:"platform"`
@@ -871,6 +889,45 @@ func (c *Client) PatchTopology(ctx context.Context, patch []byte, lastKnownVersi
 	}
 
 	return body.Version, nil
+}
+
+// ListCommands fetches the commands to apply on the cluster.
+func (c *Client) ListCommands(ctx context.Context) ([]Command, error) {
+	baseURL, err := c.baseURL.Parse(path.Join(c.baseURL.Path, "commands"))
+	if err != nil {
+		return nil, fmt.Errorf("parse endpoint: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, baseURL.String(), http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		all, _ := io.ReadAll(resp.Body)
+
+		apiErr := APIError{StatusCode: resp.StatusCode}
+		if err = json.Unmarshal(all, &apiErr); err != nil {
+			apiErr.Message = string(all)
+		}
+
+		return nil, apiErr
+	}
+
+	var commands []Command
+	if err = json.NewDecoder(resp.Body).Decode(&commands); err != nil {
+		return nil, fmt.Errorf("decode list commands resp: %w", err)
+	}
+
+	return commands, nil
 }
 
 func newGzippedRequestWithContext(ctx context.Context, verb, u string, body []byte) (*http.Request, error) {
