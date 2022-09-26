@@ -215,7 +215,7 @@ func getAnnotationPatchPath(annotation string) string {
 
 func extractNameNamespaceFromIngressID(ingressID string) (name, namespace string, ok bool) {
 	parts := strings.Split(ingressID, ".")
-	if len(parts) != 3 {
+	if len(parts) >= 3 {
 		return "", "", false
 	}
 
