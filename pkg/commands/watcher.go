@@ -27,8 +27,8 @@ import (
 	"github.com/traefik/hub-agent-kubernetes/pkg/acp/admission/reviewer"
 	"github.com/traefik/hub-agent-kubernetes/pkg/platform"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
+	ktypes "k8s.io/apimachinery/pkg/types"
+	clientset "k8s.io/client-go/kubernetes"
 )
 
 // AnnotationLastPatchRequestedAt is specifies the date at which an update
@@ -43,11 +43,11 @@ type CommandFetcher interface {
 // Watcher watches and applies the patch commands from the platform.
 type Watcher struct {
 	fetcher CommandFetcher
-	k8s     kubernetes.Interface
+	k8s     clientset.Interface
 }
 
 // NewWatcher creates a Watcher.
-func NewWatcher(fetcher CommandFetcher, k8s kubernetes.Interface) *Watcher {
+func NewWatcher(fetcher CommandFetcher, k8s clientset.Interface) *Watcher {
 	return &Watcher{fetcher: fetcher, k8s: k8s}
 }
 
@@ -143,7 +143,7 @@ func (w *Watcher) setIngressACPCommand(ctx context.Context, requestedAt time.Tim
 		return
 	}
 
-	_, err = ingresses.Patch(ctx, name, types.JSONPatchType, rawPatch, metav1.PatchOptions{})
+	_, err = ingresses.Patch(ctx, name, ktypes.JSONPatchType, rawPatch, metav1.PatchOptions{})
 	if err != nil {
 		logger.Error().Err(err).Msg("Unable to set ACP on ingress")
 		return
@@ -200,7 +200,7 @@ func (w *Watcher) deleteIngressACPCommand(ctx context.Context, requestedAt time.
 		return
 	}
 
-	_, err = ingresses.Patch(ctx, name, types.JSONPatchType, rawPatch, metav1.PatchOptions{})
+	_, err = ingresses.Patch(ctx, name, ktypes.JSONPatchType, rawPatch, metav1.PatchOptions{})
 	if err != nil {
 		logger.Error().Err(err).Msg("Unable to remove ACP from ingress")
 		return
@@ -213,7 +213,7 @@ func getAnnotationPatchPath(annotation string) string {
 	return "/metadata/annotations/" + strings.ReplaceAll(annotation, "/", "~1")
 }
 
-func extractNameNamespaceFromIngressID(ingressID string) (name string, namespace string, ok bool) {
+func extractNameNamespaceFromIngressID(ingressID string) (name, namespace string, ok bool) {
 	parts := strings.Split(ingressID, ".")
 	if len(parts) != 3 {
 		return "", "", false
