@@ -903,6 +903,9 @@ func (c *Client) ListCommands(ctx context.Context) ([]Command, error) {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 
+	req.Header.Set("Workspace-Id", "workspace-1")
+	req.Header.Set("Cluster-Id", "cluster-1")
+
 	req.Header.Set("Authorization", "Bearer "+c.token)
 
 	resp, err := c.httpClient.Do(req)
