@@ -19,6 +19,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"sort"
 	"time"
 
@@ -32,25 +33,31 @@ import (
 // has been requested in the RFC-3339 format.
 const AnnotationLastPatchRequestedAt = "hub.traefik.io/last-patch-requested-at"
 
-// CommandStore is capable of fetching commands and sending command reports.
-type CommandStore interface {
+// Store is capable of fetching commands and sending command reports.
+type Store interface {
 	ListPendingCommands(ctx context.Context) ([]platform.Command, error)
 	SendCommandReports(ctx context.Context, reports []platform.CommandReport) error
 }
 
+// Handler can handle a command.
+type Handler interface {
+	Handle(ctx context.Context, id string, requestedAt time.Time, data json.RawMessage) *platform.CommandReport
+}
+
 // Watcher watches and applies the patch commands from the platform.
 type Watcher struct {
-	commands     CommandStore
-	k8sClientSet clientset.Interface
-	hubClientSet hubclientset.Interface
+	store    Store
+	commands map[string]Handler
 }
 
 // NewWatcher creates a Watcher.
-func NewWatcher(commands CommandStore, k8sClientSet clientset.Interface, hubClientSet hubclientset.Interface) *Watcher {
+func NewWatcher(store Store, k8sClientSet clientset.Interface, hubClientSet hubclientset.Interface) *Watcher {
 	return &Watcher{
-		commands:     commands,
-		k8sClientSet: k8sClientSet,
-		hubClientSet: hubClientSet,
+		store: store,
+		commands: map[string]Handler{
+			"set-ingress-acp":    NewSetIngressACPCommand(k8sClientSet, hubClientSet),
+			"delete-ingress-acp": NewDeleteIngressACPCommand(k8sClientSet),
+		},
 	}
 }
 
@@ -73,7 +80,7 @@ func (w *Watcher) Start(ctx context.Context) {
 func (w *Watcher) applyPendingCommands(ctx context.Context) {
 	logger := log.Ctx(ctx)
 
-	commands, err := w.commands.ListPendingCommands(ctx)
+	commands, err := w.store.ListPendingCommands(ctx)
 	if err != nil {
 		logger.Warn().Err(err).Msg("Failed to list commands")
 		return
@@ -93,16 +100,21 @@ func (w *Watcher) applyPendingCommands(ctx context.Context) {
 	for _, command := range commands {
 		var report *platform.CommandReport
 
-		switch {
-		case command.SetIngressACP != nil:
-			report = w.setIngressACP(ctx, command.ID, command.CreatedAt, command.SetIngressACP)
-		case command.DeleteIngressACP != nil:
-			report = w.deleteIngressACP(ctx, command.ID, command.CreatedAt, command.DeleteIngressACP)
-		default:
-			logger.Error().Msg("Command unsupported on this agent version")
-			report = newErrorCommandReport(command.ID, reportErrorTypeUnsupportedCommand)
+		handler, ok := w.commands[command.Type]
+		if !ok {
+			logger.Error().
+				Str("command", command.Type).
+				Msg("Command unsupported on this agent version")
+
+			reports = append(reports, *newErrorCommandReport(command.ID, reportErrorTypeUnsupportedCommand))
+			continue
 		}
 
+		execCtx := logger.With().
+			Str("command_type", command.Type).
+			Logger().WithContext(ctx)
+
+		report = handler.Handle(execCtx, command.ID, command.CreatedAt, command.Data)
 		if report != nil {
 			reports = append(reports, *report)
 		}
@@ -112,7 +124,7 @@ func (w *Watcher) applyPendingCommands(ctx context.Context) {
 		return
 	}
 
-	if err = w.commands.SendCommandReports(ctx, reports); err != nil {
+	if err = w.store.SendCommandReports(ctx, reports); err != nil {
 		logger.Error().Err(err).Msg("Failed to send command reports")
 	}
 }

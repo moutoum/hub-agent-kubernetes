@@ -30,7 +30,7 @@ import (
 	kubemock "k8s.io/client-go/kubernetes/fake"
 )
 
-func TestWatcher_deleteIngressACP(t *testing.T) {
+func TestDeleteIngressACPCommand_Handle_success(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
@@ -46,16 +46,14 @@ func TestWatcher_deleteIngressACP(t *testing.T) {
 			},
 		},
 	}
-	k8sClient := kubemock.NewSimpleClientset(ingress)
 
-	w := NewWatcher(nil, k8sClient, nil)
+	k8sClient := kubemock.NewSimpleClientset(ingress)
+	handler := NewDeleteIngressACPCommand(k8sClient)
 
 	createdAt := now
-	data := &platform.DeleteIngressACP{
-		IngressID: "my-ingress@my-ns.ingress.networking.k8s.io",
-	}
+	data := []byte(`{"ingressId": "my-ingress@my-ns.ingress.networking.k8s.io"}`)
 
-	report := w.deleteIngressACP(ctx, "command-id", createdAt, data)
+	report := handler.Handle(ctx, "command-id", createdAt, data)
 
 	updatedIngress, err := k8sClient.NetworkingV1().
 		Ingresses("my-ns").
@@ -71,27 +69,25 @@ func TestWatcher_deleteIngressACP(t *testing.T) {
 	assert.Equal(t, wantIngress, updatedIngress)
 }
 
-func TestWatcher_deleteIngressACP_ingressNotFound(t *testing.T) {
+func TestDeleteIngressACPCommand_Handle_ingressNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	k8sClient := kubemock.NewSimpleClientset()
 
-	w := NewWatcher(nil, k8sClient, nil)
+	handler := NewDeleteIngressACPCommand(k8sClient)
 
 	createdAt := now
-	data := &platform.DeleteIngressACP{
-		IngressID: "my-ingress@my-ns.ingress.networking.k8s.io",
-	}
+	data := []byte(`{"ingressId": "my-ingress@my-ns.ingress.networking.k8s.io"}`)
 
-	report := w.deleteIngressACP(ctx, "command-id", createdAt, data)
+	report := handler.Handle(ctx, "command-id", createdAt, data)
 
 	assert.Equal(t, platform.NewErrorCommandReport("command-id", platform.CommandReportError{
 		Type: "ingress-not-found",
 	}), report)
 }
 
-func TestWatcher_deleteIngressACP_nothingDoDelete(t *testing.T) {
+func TestDeleteIngressACPCommand_Handle_nothingDoDelete(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
@@ -107,15 +103,12 @@ func TestWatcher_deleteIngressACP_nothingDoDelete(t *testing.T) {
 		},
 	}
 	k8sClient := kubemock.NewSimpleClientset(ingress)
-
-	w := NewWatcher(nil, k8sClient, nil)
+	handler := NewDeleteIngressACPCommand(k8sClient)
 
 	createdAt := now
-	data := &platform.DeleteIngressACP{
-		IngressID: "my-ingress@my-ns.ingress.networking.k8s.io",
-	}
+	data := []byte(`{"ingressId": "my-ingress@my-ns.ingress.networking.k8s.io"}`)
 
-	report := w.deleteIngressACP(ctx, "command-id", createdAt, data)
+	report := handler.Handle(ctx, "command-id", createdAt, data)
 
 	updatedIngress, err := k8sClient.NetworkingV1().
 		Ingresses("my-ns").
@@ -128,4 +121,22 @@ func TestWatcher_deleteIngressACP_nothingDoDelete(t *testing.T) {
 
 	assert.Equal(t, platform.NewSuccessCommandReport("command-id"), report)
 	assert.Equal(t, wantIngress, updatedIngress)
+}
+
+func TestDeleteIngressACPCommand_Handle_invalidPayload(t *testing.T) {
+	ctx := context.Background()
+
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	handler := NewDeleteIngressACPCommand(nil)
+
+	createdAt := now
+	data := []byte(`invalid payload`)
+
+	report := handler.Handle(ctx, "command-id", createdAt, data)
+
+	assert.Equal(t, platform.CommandExecutionStatusFailure, report.Status)
+	assert.NotNil(t, report.Error)
+	assert.Equal(t, "internal-error", report.Error.Type)
+	assert.NotEmpty(t, report.Error.Data)
 }

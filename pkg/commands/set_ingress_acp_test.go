@@ -20,22 +20,20 @@ package commands
 import (
 	"context"
 	"errors"
-
-	"github.com/traefik/hub-agent-kubernetes/pkg/crd/api/hub/v1alpha1"
-
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	hubmock "github.com/traefik/hub-agent-kubernetes/pkg/crd/generated/client/hub/clientset/versioned/fake"
+	hubv1alpha1 "github.com/traefik/hub-agent-kubernetes/pkg/crd/api/hub/v1alpha1"
+	hubkubemock "github.com/traefik/hub-agent-kubernetes/pkg/crd/generated/client/hub/clientset/versioned/fake"
 	"github.com/traefik/hub-agent-kubernetes/pkg/platform"
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubemock "k8s.io/client-go/kubernetes/fake"
 )
 
-func TestWatcher_setIngressACP(t *testing.T) {
+func TestSetIngressACPCommand_Handle_success(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
@@ -48,29 +46,26 @@ func TestWatcher_setIngressACP(t *testing.T) {
 			},
 		},
 	}
-	basicAuth := &v1alpha1.AccessControlPolicy{
+	basicAuth := &hubv1alpha1.AccessControlPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "my-acp",
 		},
-		Spec: v1alpha1.AccessControlPolicySpec{
-			BasicAuth: &v1alpha1.AccessControlPolicyBasicAuth{
+		Spec: hubv1alpha1.AccessControlPolicySpec{
+			BasicAuth: &hubv1alpha1.AccessControlPolicyBasicAuth{
 				Users: []string{"user:pass"},
 			},
 		},
 	}
 
 	k8sClient := kubemock.NewSimpleClientset(ingress)
-	hubClient := hubmock.NewSimpleClientset(basicAuth)
+	hubClient := hubkubemock.NewSimpleClientset(basicAuth)
 
-	w := NewWatcher(nil, k8sClient, hubClient)
+	handler := NewSetIngressACPCommand(k8sClient, hubClient)
 
 	createdAt := now.Add(-time.Hour)
-	data := &platform.SetIngressACP{
-		IngressID: "my-ingress@my-ns.ingress.networking.k8s.io",
-		ACPName:   "my-acp",
-	}
+	data := []byte(`{"ingressId": "my-ingress@my-ns.ingress.networking.k8s.io", "acpName": "my-acp"}`)
 
-	report := w.setIngressACP(ctx, "command-id", createdAt, data)
+	report := handler.Handle(ctx, "command-id", createdAt, data)
 
 	updatedIngress, err := k8sClient.NetworkingV1().
 		Ingresses("my-ns").
@@ -86,29 +81,26 @@ func TestWatcher_setIngressACP(t *testing.T) {
 	assert.Equal(t, wantIngress, updatedIngress)
 }
 
-func TestWatcher_setIngressACP_ingressNotFound(t *testing.T) {
+func TestSetIngressACPCommand_Handle_ingressNotFound(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
 	k8sClient := kubemock.NewSimpleClientset()
-	hubClient := hubmock.NewSimpleClientset()
-
-	w := NewWatcher(nil, k8sClient, hubClient)
+	hubClient := hubkubemock.NewSimpleClientset()
 
 	createdAt := now.Add(-time.Hour)
-	data := &platform.SetIngressACP{
-		IngressID: "my-ingress@my-ns.ingress.networking.k8s.io",
-		ACPName:   "my-acp",
-	}
+	data := []byte(`{"ingressId": "my-ingress@my-ns.ingress.networking.k8s.io", "acpName": "my-acp"}`)
 
-	report := w.setIngressACP(ctx, "command-id", createdAt, data)
+	handler := NewSetIngressACPCommand(k8sClient, hubClient)
+
+	report := handler.Handle(ctx, "command-id", createdAt, data)
 
 	assert.Equal(t, platform.NewErrorCommandReport("command-id", platform.CommandReportError{
 		Type: "ingress-not-found",
 	}), report)
 }
 
-func TestWatcher_setIngressACP_acpNotFound(t *testing.T) {
+func TestSetIngressACPCommand_Handle_acpNotFound(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
@@ -123,24 +115,21 @@ func TestWatcher_setIngressACP_acpNotFound(t *testing.T) {
 	}
 
 	k8sClient := kubemock.NewSimpleClientset(ingress)
-	hubClient := hubmock.NewSimpleClientset()
-
-	w := NewWatcher(nil, k8sClient, hubClient)
+	hubClient := hubkubemock.NewSimpleClientset()
 
 	createdAt := now.Add(-time.Hour)
-	data := &platform.SetIngressACP{
-		IngressID: "my-ingress@my-ns.ingress.networking.k8s.io",
-		ACPName:   "my-acp",
-	}
+	data := []byte(`{"ingressId": "my-ingress@my-ns.ingress.networking.k8s.io", "acpName": "my-acp"}`)
 
-	report := w.setIngressACP(ctx, "command-id", createdAt, data)
+	handler := NewSetIngressACPCommand(k8sClient, hubClient)
+
+	report := handler.Handle(ctx, "command-id", createdAt, data)
 
 	assert.Equal(t, platform.NewErrorCommandReport("command-id", platform.CommandReportError{
 		Type: "acp-not-found",
 	}), report)
 }
 
-func TestWatcher_setIngressACP_replace(t *testing.T) {
+func TestSetIngressACPCommand_Handle_replace(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
@@ -157,29 +146,26 @@ func TestWatcher_setIngressACP_replace(t *testing.T) {
 		},
 	}
 
-	basicAuth := &v1alpha1.AccessControlPolicy{
+	basicAuth := &hubv1alpha1.AccessControlPolicy{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "my-acp-2",
 		},
-		Spec: v1alpha1.AccessControlPolicySpec{
-			BasicAuth: &v1alpha1.AccessControlPolicyBasicAuth{
+		Spec: hubv1alpha1.AccessControlPolicySpec{
+			BasicAuth: &hubv1alpha1.AccessControlPolicyBasicAuth{
 				Users: []string{"user:pass"},
 			},
 		},
 	}
 
 	k8sClient := kubemock.NewSimpleClientset(ingress)
-	hubClient := hubmock.NewSimpleClientset(basicAuth)
-
-	w := NewWatcher(nil, k8sClient, hubClient)
+	hubClient := hubkubemock.NewSimpleClientset(basicAuth)
 
 	createdAt := now
-	data := &platform.SetIngressACP{
-		IngressID: "my-ingress@my-ns.ingress.networking.k8s.io",
-		ACPName:   "my-acp-2",
-	}
+	data := []byte(`{"ingressId": "my-ingress@my-ns.ingress.networking.k8s.io", "acpName": "my-acp-2"}`)
 
-	report := w.setIngressACP(ctx, "command-id", createdAt, data)
+	handler := NewSetIngressACPCommand(k8sClient, hubClient)
+
+	report := handler.Handle(ctx, "command-id", createdAt, data)
 
 	updatedIngress, err := k8sClient.NetworkingV1().
 		Ingresses("my-ns").
@@ -195,7 +181,7 @@ func TestWatcher_setIngressACP_replace(t *testing.T) {
 	assert.Equal(t, wantIngress, updatedIngress)
 }
 
-func TestWatcher_setIngressACP_oldCommand(t *testing.T) {
+func TestSetIngressACPCommand_Handle_oldCommand(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
@@ -213,15 +199,12 @@ func TestWatcher_setIngressACP_oldCommand(t *testing.T) {
 	}
 	k8sClient := kubemock.NewSimpleClientset(ingress)
 
-	w := NewWatcher(nil, k8sClient, nil)
-
 	createdAt := now.Add(-2 * time.Hour)
-	data := &platform.SetIngressACP{
-		IngressID: "my-ingress@my-ns.ingress.networking.k8s.io",
-		ACPName:   "my-acp-2",
-	}
+	data := []byte(`{"ingressId": "my-ingress@my-ns.ingress.networking.k8s.io", "acpName": "my-acp-2"}`)
 
-	report := w.setIngressACP(ctx, "command-id", createdAt, data)
+	handler := NewSetIngressACPCommand(k8sClient, nil)
+
+	report := handler.Handle(ctx, "command-id", createdAt, data)
 
 	updatedIngress, err := k8sClient.NetworkingV1().
 		Ingresses("my-ns").
@@ -234,6 +217,24 @@ func TestWatcher_setIngressACP_oldCommand(t *testing.T) {
 		Type: "internal-error",
 		Data: errors.New("operation already executed"),
 	}), report)
+}
+
+func TestSetIngressACPCommand_Handle_invalidPayload(t *testing.T) {
+	ctx := context.Background()
+
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	handler := NewSetIngressACPCommand(nil, nil)
+
+	createdAt := now
+	data := []byte(`invalid payload`)
+
+	report := handler.Handle(ctx, "command-id", createdAt, data)
+
+	assert.Equal(t, platform.CommandExecutionStatusFailure, report.Status)
+	assert.NotNil(t, report.Error)
+	assert.Equal(t, "internal-error", report.Error.Type)
+	assert.NotEmpty(t, report.Error.Data)
 }
 
 func TestExtractNameNamespaceFromIngressID(t *testing.T) {

@@ -19,6 +19,7 @@ package commands
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -27,28 +28,54 @@ import (
 	"github.com/traefik/hub-agent-kubernetes/pkg/platform"
 	kerror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	ktypes "k8s.io/apimachinery/pkg/types"
+	clientset "k8s.io/client-go/kubernetes"
 )
 
-func (w *Watcher) deleteIngressACP(ctx context.Context, commandID string, requestedAt time.Time, data *platform.DeleteIngressACP) *platform.CommandReport {
-	logger := log.Ctx(ctx).With().Str("command_type", "delete_ingress_acp").Logger()
-	name, ns, ok := extractNameNamespaceFromIngressID(data.IngressID)
+// DeleteIngressACPCommand removes the ACP of a given Ingress.
+type DeleteIngressACPCommand struct {
+	k8sClientSet clientset.Interface
+}
+
+// NewDeleteIngressACPCommand creates a new DeleteIngressACPCommand.
+func NewDeleteIngressACPCommand(k8sClientSet clientset.Interface) *DeleteIngressACPCommand {
+	return &DeleteIngressACPCommand{
+		k8sClientSet: k8sClientSet,
+	}
+}
+
+type deleteIngressACPPayload struct {
+	IngressID string `json:"ingressId"`
+}
+
+// Handle handles the ACP deletion on the given Ingress.
+func (c *DeleteIngressACPCommand) Handle(ctx context.Context, id string, requestedAt time.Time, data json.RawMessage) *platform.CommandReport {
+	var payload deleteIngressACPPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		log.Ctx(ctx).Error().Err(err).Msg("Unable to unmarshal command payload")
+		return newInternalErrorCommandReport(id, err)
+	}
+
+	logger := log.Ctx(ctx).With().Str("ingress_id", payload.IngressID).Logger()
+
+	name, ns, ok := extractNameNamespaceFromIngressID(payload.IngressID)
 	if !ok {
 		logger.Error().Msg("Unable to extract name and namespace from the given IngressID")
-		return newErrorCommandReport(commandID, reportErrorTypeInvalidIngressID)
+		return newErrorCommandReport(id, reportErrorTypeInvalidIngressID)
 	}
 
 	logger = logger.With().Str("ingress_name", name).Str("ingress_namespace", ns).Logger()
 
-	ingresses := w.k8sClientSet.NetworkingV1().Ingresses(ns)
+	ingresses := c.k8sClientSet.NetworkingV1().Ingresses(ns)
 	ingress, err := ingresses.Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		if kerror.IsNotFound(err) {
 			logger.Error().Err(err).Msg("Ingress not found")
-			return newErrorCommandReport(commandID, reportErrorTypeIngressNotFound)
+			return newErrorCommandReport(id, reportErrorTypeIngressNotFound)
 		}
 
 		logger.Error().Err(err).Msg("Unable to find Ingress")
-		return newInternalErrorCommandReport(commandID, err)
+		return newInternalErrorCommandReport(id, err)
 	}
 
 	var patchedAt time.Time
@@ -61,7 +88,7 @@ func (w *Watcher) deleteIngressACP(ctx context.Context, commandID string, reques
 
 	if requestedAt.Before(patchedAt) || requestedAt.Equal(patchedAt) {
 		logger.Debug().Msg("Command already applied. Ignoring")
-		return newInternalErrorCommandReport(commandID, fmt.Errorf("operation already executed"))
+		return newInternalErrorCommandReport(id, fmt.Errorf("operation already executed"))
 	}
 
 	mergePatch := ingressPatch{
@@ -73,10 +100,26 @@ func (w *Watcher) deleteIngressACP(ctx context.Context, commandID string, reques
 		},
 	}
 
-	if err = w.patchIngress(ctx, name, ns, mergePatch); err != nil {
+	if err = c.patchIngress(ctx, name, ns, mergePatch); err != nil {
 		logger.Error().Err(err).Msg("Unable to delete ingress ACP")
-		return newInternalErrorCommandReport(commandID, err)
+		return newInternalErrorCommandReport(id, err)
 	}
 
-	return platform.NewSuccessCommandReport(commandID)
+	return platform.NewSuccessCommandReport(id)
+}
+
+func (c *DeleteIngressACPCommand) patchIngress(ctx context.Context, name, ns string, patch ingressPatch) error {
+	rawPatch, err := json.Marshal(patch)
+	if err != nil {
+		return err
+	}
+
+	ingresses := c.k8sClientSet.NetworkingV1().Ingresses(ns)
+
+	_, err = ingresses.Patch(ctx, name, ktypes.MergePatchType, rawPatch, metav1.PatchOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

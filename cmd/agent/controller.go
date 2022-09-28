@@ -24,11 +24,10 @@ import (
 	"strconv"
 	"time"
 
-	hubclientset "github.com/traefik/hub-agent-kubernetes/pkg/crd/generated/client/hub/clientset/versioned"
-
 	"github.com/ettle/strcase"
 	"github.com/rs/zerolog/log"
 	"github.com/traefik/hub-agent-kubernetes/pkg/commands"
+	hubclientset "github.com/traefik/hub-agent-kubernetes/pkg/crd/generated/client/hub/clientset/versioned"
 	traefikclientset "github.com/traefik/hub-agent-kubernetes/pkg/crd/generated/client/traefik/clientset/versioned"
 	"github.com/traefik/hub-agent-kubernetes/pkg/heartbeat"
 	"github.com/traefik/hub-agent-kubernetes/pkg/kube"

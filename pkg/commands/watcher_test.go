@@ -22,44 +22,41 @@ import (
 	"testing"
 	"time"
 
-	"github.com/traefik/hub-agent-kubernetes/pkg/crd/api/hub/v1alpha1"
-	hubmock "github.com/traefik/hub-agent-kubernetes/pkg/crd/generated/client/hub/clientset/versioned/fake"
-
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
-	netv1 "k8s.io/api/networking/v1"
-	"k8s.io/apimachinery/pkg/api/meta"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/watch"
-
+	"github.com/stretchr/testify/mock"
 	"github.com/traefik/hub-agent-kubernetes/pkg/platform"
-	kubemock "k8s.io/client-go/kubernetes/fake"
 )
 
-func TestWatcher_applyCommands_skipsUnknownCommands(t *testing.T) {
+func TestWatcher_applyPendingCommands_skipsUnknownCommands(t *testing.T) {
 	ctx := context.Background()
 
 	now := time.Now().UTC().Truncate(time.Millisecond)
 
-	k8sClient := kubemock.NewSimpleClientset()
-	commands := newCommandStoreMock(t)
-
 	pendingCommands := []platform.Command{
 		{
 			ID:        "command-1",
+			Type:      "unknown-command-type",
 			CreatedAt: now.Add(-time.Minute),
 		},
 		{
 			ID:        "command-2",
 			CreatedAt: now,
-			DeleteIngressACP: &platform.DeleteIngressACP{
-				IngressID: "my-ingress@my-ns.ingress.networking.k8s.io",
-			},
+			Type:      "do-something",
+			Data:      []byte("hello"),
 		},
 	}
-	commands.OnListPendingCommands().TypedReturns(pendingCommands, nil).Once()
 
-	commands.OnSendCommandReports([]platform.CommandReport{
+	doSomethingHandler := newHandlerMock(t)
+	doSomethingHandler.OnHandle("command-2", now, []byte("hello")).
+		TypedReturns(platform.NewErrorCommandReport("command-2", platform.CommandReportError{
+			Type: string(reportErrorTypeIngressNotFound),
+		})).
+		Once()
+
+	store := newStoreMock(t)
+	store.OnListPendingCommands().TypedReturns(pendingCommands, nil).Once()
+
+	store.OnSendCommandReports([]platform.CommandReport{
 		*platform.NewErrorCommandReport("command-1", platform.CommandReportError{
 			Type: string(reportErrorTypeUnsupportedCommand),
 		}),
@@ -68,51 +65,57 @@ func TestWatcher_applyCommands_skipsUnknownCommands(t *testing.T) {
 		}),
 	}).TypedReturns(nil).Once()
 
-	w := NewWatcher(commands, k8sClient, nil)
+	w := NewWatcher(store, nil, nil)
+	w.commands = map[string]Handler{
+		"do-something": doSomethingHandler,
+	}
 
 	w.applyPendingCommands(ctx)
 }
 
-func TestWatcher_applyCommands_appliedByDate(t *testing.T) {
+func TestWatcher_applyPendingCommands_appliedByDate(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Millisecond)
-
-	k8sClient := kubemock.NewSimpleClientset(&netv1.Ingress{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "Ingress",
-			APIVersion: "networking.k8s.io/v1",
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        "my-ingress",
-			Namespace:   "my-ns",
-			Annotations: map[string]string{},
-		},
-	})
-
-	hubClient := hubmock.NewSimpleClientset(
-		&v1alpha1.AccessControlPolicy{ObjectMeta: metav1.ObjectMeta{Name: "my-acp-1"}},
-		&v1alpha1.AccessControlPolicy{ObjectMeta: metav1.ObjectMeta{Name: "my-acp-2"}})
 
 	pendingCommands := []platform.Command{
 		{
 			ID:        "command-2",
 			CreatedAt: now,
-			SetIngressACP: &platform.SetIngressACP{
-				IngressID: "my-ingress@my-ns.ingress.networking.k8s.io",
-				ACPName:   "my-acp-2",
-			},
+			Type:      "do-something",
+			Data:      []byte("command-2"),
 		},
 		{
 			ID:        "command-1",
 			CreatedAt: now.Add(-2 * time.Hour),
-			SetIngressACP: &platform.SetIngressACP{
-				IngressID: "my-ingress@my-ns.ingress.networking.k8s.io",
-				ACPName:   "my-acp-1",
-			},
+			Type:      "do-something",
+			Data:      []byte("command-1"),
 		},
 	}
 
-	commands := newCommandStoreMock(t)
+	var callCount int
+	assertNthCall := func(t *testing.T, nth int) func(mock.Arguments) {
+		t.Helper()
+
+		return func(_ mock.Arguments) {
+			assert.Equal(t, nth, callCount)
+			callCount++
+		}
+	}
+
+	doSomethingHandler := newHandlerMock(t)
+	doSomethingHandler.
+		OnHandle("command-1", now.Add(-2*time.Hour), []byte("command-1")).
+		TypedReturns(platform.NewSuccessCommandReport("command-1")).
+		Run(assertNthCall(t, 0)).
+		Once()
+
+	doSomethingHandler.
+		OnHandle("command-2", now, []byte("command-2")).
+		TypedReturns(platform.NewSuccessCommandReport("command-2")).
+		Run(assertNthCall(t, 1)).
+		Once()
+
+	commands := newStoreMock(t)
 	commands.OnListPendingCommands().TypedReturns(pendingCommands, nil).Once()
 
 	commands.OnSendCommandReports([]platform.CommandReport{
@@ -120,48 +123,10 @@ func TestWatcher_applyCommands_appliedByDate(t *testing.T) {
 		*platform.NewSuccessCommandReport("command-2"),
 	}).TypedReturns(nil).Once()
 
-	wantAnnotationUpdates := []map[string]string{
-		{
-			"hub.traefik.io/access-control-policy":   "my-acp-1",
-			"hub.traefik.io/last-patch-requested-at": now.Add(-2 * time.Hour).Format(time.RFC3339),
-		},
-		{
-			"hub.traefik.io/access-control-policy":   "my-acp-2",
-			"hub.traefik.io/last-patch-requested-at": now.Format(time.RFC3339),
-		},
+	w := NewWatcher(commands, nil, nil)
+	w.commands = map[string]Handler{
+		"do-something": doSomethingHandler,
 	}
 
-	w := NewWatcher(commands, k8sClient, hubClient)
-
-	go w.applyPendingCommands(ctx)
-
-	// Watch for ingresses events and make sure updates are made in the right order.
-	ingressWatcher, err := k8sClient.NetworkingV1().
-		Ingresses("my-ns").
-		Watch(ctx, metav1.ListOptions{})
-	require.NoError(t, err)
-
-	eventCh := ingressWatcher.ResultChan()
-
-	var updateCount int
-	for {
-		select {
-		case event := <-eventCh:
-			assert.Equal(t, watch.Modified, event.Type)
-			metadata, err := meta.Accessor(event.Object)
-			require.NoError(t, err)
-
-			assert.Equal(t, "my-ingress", metadata.GetName())
-			assert.Equal(t, "my-ns", metadata.GetNamespace())
-			assert.Equal(t, wantAnnotationUpdates[updateCount], metadata.GetAnnotations())
-
-			updateCount++
-			if updateCount == len(pendingCommands) {
-				return
-			}
-
-		case <-time.After(100 * time.Millisecond):
-			require.Fail(t, "timed out waiting for a command to be executed")
-		}
-	}
+	w.applyPendingCommands(ctx)
 }
