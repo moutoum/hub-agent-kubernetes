@@ -92,9 +92,48 @@ type UpdateEdgeIngressReq struct {
 
 // Command defines patch operation to apply on the cluster.
 type Command struct {
+	ID               string            `json:"id"`
 	CreatedAt        time.Time         `json:"createdAt"`
 	SetIngressACP    *SetIngressACP    `json:"setIngressAcp"`
 	DeleteIngressACP *DeleteIngressACP `json:"deleteIngressAcp"`
+}
+
+type CommandStatus string
+
+const (
+	CommandStatusSuccess CommandStatus = "success"
+	CommandStatusFailure CommandStatus = "failure"
+)
+
+type CommandReportError struct {
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
+}
+
+type CommandReport struct {
+	ID       string              `json:"id"`
+	Status   CommandStatus       `json:"status"`
+	Warnings []string            `json:"warnings,omitempty"`
+	Error    *CommandReportError `json:"error,omitempty"`
+}
+
+func NewErrorCommandReport(id string, err CommandReportError) *CommandReport {
+	return &CommandReport{
+		ID:     id,
+		Status: CommandStatusFailure,
+		Error:  &err,
+	}
+}
+
+func NewSuccessCommandReport(id string) *CommandReport {
+	return &CommandReport{
+		ID:     id,
+		Status: CommandStatusSuccess,
+	}
+}
+
+func (r *CommandReport) AddWarning(warning string) {
+	r.Warnings = append(r.Warnings, warning)
 }
 
 // SetIngressACP is a command that sets the ACP of an Ingress.
@@ -843,8 +882,8 @@ func (c *Client) PatchTopology(ctx context.Context, patch []byte, lastKnownVersi
 	return body.Version, nil
 }
 
-// ListCommands fetches the commands to apply on the cluster.
-func (c *Client) ListCommands(ctx context.Context) ([]Command, error) {
+// ListPendingCommands fetches the commands to apply on the cluster.
+func (c *Client) ListPendingCommands(ctx context.Context) ([]Command, error) {
 	baseURL, err := c.baseURL.Parse(path.Join(c.baseURL.Path, "commands"))
 	if err != nil {
 		return nil, fmt.Errorf("parse endpoint: %w", err)
@@ -854,9 +893,6 @@ func (c *Client) ListCommands(ctx context.Context) ([]Command, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-
-	req.Header.Set("Workspace-Id", "workspace-1")
-	req.Header.Set("Cluster-Id", "cluster-1")
 
 	req.Header.Set("Authorization", "Bearer "+c.token)
 
@@ -883,6 +919,45 @@ func (c *Client) ListCommands(ctx context.Context) ([]Command, error) {
 	}
 
 	return commands, nil
+}
+
+// SendCommandReports sends the given command reports.
+func (c *Client) SendCommandReports(ctx context.Context, reports []CommandReport) error {
+	baseURL, err := c.baseURL.Parse(path.Join(c.baseURL.Path, "commands"))
+	if err != nil {
+		return fmt.Errorf("parse endpoint: %w", err)
+	}
+
+	body, err := json.Marshal(reports)
+	if err != nil {
+		return fmt.Errorf("marshal command reports: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, baseURL.String(), bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+c.token)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		all, _ := io.ReadAll(resp.Body)
+
+		apiErr := APIError{StatusCode: resp.StatusCode}
+		if err = json.Unmarshal(all, &apiErr); err != nil {
+			apiErr.Message = string(all)
+		}
+
+		return apiErr
+	}
+
+	return nil
 }
 
 func newGzippedRequestWithContext(ctx context.Context, verb, u string, body []byte) (*http.Request, error) {
