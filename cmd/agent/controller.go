@@ -24,6 +24,8 @@ import (
 	"strconv"
 	"time"
 
+	hubclientset "github.com/traefik/hub-agent-kubernetes/pkg/crd/generated/client/hub/clientset/versioned"
+
 	"github.com/ettle/strcase"
 	"github.com/rs/zerolog/log"
 	"github.com/traefik/hub-agent-kubernetes/pkg/commands"
@@ -124,6 +126,11 @@ func (c controllerCmd) run(cliCtx *cli.Context) error {
 		return fmt.Errorf("create Traefik client set: %w", err)
 	}
 
+	hubClientSet, err := hubclientset.NewForConfig(kubeCfg)
+	if err != nil {
+		return fmt.Errorf("create Hub client set: %w", err)
+	}
+
 	platformClient, err := platform.NewClient(platformURL, token)
 	if err != nil {
 		return fmt.Errorf("build platform client: %w", err)
@@ -146,7 +153,7 @@ func (c controllerCmd) run(cliCtx *cli.Context) error {
 
 	checker := version.NewChecker(platformClient)
 
-	commandWatcher := commands.NewWatcher(platformClient, kubeClient)
+	commandWatcher := commands.NewWatcher(platformClient, kubeClient, hubClientSet)
 
 	group, ctx := errgroup.WithContext(cliCtx.Context)
 
