@@ -92,59 +92,52 @@ type UpdateEdgeIngressReq struct {
 
 // Command defines patch operation to apply on the cluster.
 type Command struct {
-	ID               string            `json:"id"`
-	CreatedAt        time.Time         `json:"createdAt"`
-	SetIngressACP    *SetIngressACP    `json:"setIngressAcp"`
-	DeleteIngressACP *DeleteIngressACP `json:"deleteIngressAcp"`
+	ID        string          `json:"id"`
+	CreatedAt time.Time       `json:"createdAt"`
+	Type      string          `json:"type"`
+	Data      json.RawMessage `json:"data"`
 }
 
-type CommandStatus string
+// CommandExecutionStatus describes the execution status of a command.
+type CommandExecutionStatus string
 
+// The different CommandExecutionStatus available.
 const (
-	CommandStatusSuccess CommandStatus = "success"
-	CommandStatusFailure CommandStatus = "failure"
+	CommandExecutionStatusSuccess CommandExecutionStatus = "success"
+	CommandExecutionStatusFailure CommandExecutionStatus = "failure"
 )
 
+// CommandReportError holds details about an execution failure.
 type CommandReportError struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
+	// Type identifies the reason of the error.
+	Type string `json:"type"`
+
+	// Data is a freeform Type dependent value.
+	Data interface{} `json:"data,omitempty"`
 }
 
+// CommandReport describes the output of a command execution.
 type CommandReport struct {
-	ID       string              `json:"id"`
-	Status   CommandStatus       `json:"status"`
-	Warnings []string            `json:"warnings,omitempty"`
-	Error    *CommandReportError `json:"error,omitempty"`
+	ID     string                 `json:"id"`
+	Status CommandExecutionStatus `json:"status"`
+	Error  *CommandReportError    `json:"error,omitempty"`
 }
 
+// NewErrorCommandReport creates a new CommandReport with a status CommandExecutionStatusFailure.
 func NewErrorCommandReport(id string, err CommandReportError) *CommandReport {
 	return &CommandReport{
 		ID:     id,
-		Status: CommandStatusFailure,
+		Status: CommandExecutionStatusFailure,
 		Error:  &err,
 	}
 }
 
+// NewSuccessCommandReport creates a new CommandReport with a status CommandExecutionStatusSuccess.
 func NewSuccessCommandReport(id string) *CommandReport {
 	return &CommandReport{
 		ID:     id,
-		Status: CommandStatusSuccess,
+		Status: CommandExecutionStatusSuccess,
 	}
-}
-
-func (r *CommandReport) AddWarning(warning string) {
-	r.Warnings = append(r.Warnings, warning)
-}
-
-// SetIngressACP is a command that sets the ACP of an Ingress.
-type SetIngressACP struct {
-	IngressID string `json:"ingressId"`
-	ACPName   string `json:"acpName"`
-}
-
-// DeleteIngressACP is a command that removes the ACP of an Ingress.
-type DeleteIngressACP struct {
-	IngressID string `json:"ingressId"`
 }
 
 type linkClusterReq struct {
