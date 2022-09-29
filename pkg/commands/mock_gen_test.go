@@ -110,7 +110,7 @@ func (_c *storeListPendingCommandsCall) OnListPendingCommands() *storeListPendin
 	return _c.Parent.OnListPendingCommands()
 }
 
-func (_c *storeListPendingCommandsCall) OnSendCommandReports(reports []platform.CommandReport) *storeSendCommandReportsCall {
+func (_c *storeListPendingCommandsCall) OnSendCommandReports(reports []platform.CommandExecutionReport) *storeSendCommandReportsCall {
 	return _c.Parent.OnSendCommandReports(reports)
 }
 
@@ -122,10 +122,10 @@ func (_c *storeListPendingCommandsCall) OnSendCommandReportsRaw(reports interfac
 	return _c.Parent.OnSendCommandReportsRaw(reports)
 }
 
-func (_m *storeMock) SendCommandReports(_ context.Context, reports []platform.CommandReport) error {
+func (_m *storeMock) UpdateCommands(_ context.Context, reports []platform.CommandExecutionReport) error {
 	_ret := _m.Called(reports)
 
-	if _rf, ok := _ret.Get(0).(func([]platform.CommandReport) error); ok {
+	if _rf, ok := _ret.Get(0).(func([]platform.CommandExecutionReport) error); ok {
 		return _rf(reports)
 	}
 
@@ -134,12 +134,12 @@ func (_m *storeMock) SendCommandReports(_ context.Context, reports []platform.Co
 	return _ra0
 }
 
-func (_m *storeMock) OnSendCommandReports(reports []platform.CommandReport) *storeSendCommandReportsCall {
-	return &storeSendCommandReportsCall{Call: _m.Mock.On("SendCommandReports", reports), Parent: _m}
+func (_m *storeMock) OnSendCommandReports(reports []platform.CommandExecutionReport) *storeSendCommandReportsCall {
+	return &storeSendCommandReportsCall{Call: _m.Mock.On("UpdateCommands", reports), Parent: _m}
 }
 
 func (_m *storeMock) OnSendCommandReportsRaw(reports interface{}) *storeSendCommandReportsCall {
-	return &storeSendCommandReportsCall{Call: _m.Mock.On("SendCommandReports", reports), Parent: _m}
+	return &storeSendCommandReportsCall{Call: _m.Mock.On("UpdateCommands", reports), Parent: _m}
 }
 
 type storeSendCommandReportsCall struct {
@@ -192,14 +192,14 @@ func (_c *storeSendCommandReportsCall) TypedReturns(a error) *storeSendCommandRe
 	return _c
 }
 
-func (_c *storeSendCommandReportsCall) ReturnsFn(fn func([]platform.CommandReport) error) *storeSendCommandReportsCall {
+func (_c *storeSendCommandReportsCall) ReturnsFn(fn func([]platform.CommandExecutionReport) error) *storeSendCommandReportsCall {
 	_c.Call = _c.Return(fn)
 	return _c
 }
 
-func (_c *storeSendCommandReportsCall) TypedRun(fn func([]platform.CommandReport)) *storeSendCommandReportsCall {
+func (_c *storeSendCommandReportsCall) TypedRun(fn func([]platform.CommandExecutionReport)) *storeSendCommandReportsCall {
 	_c.Call = _c.Call.Run(func(args mock.Arguments) {
-		_reports, _ := args.Get(0).([]platform.CommandReport)
+		_reports, _ := args.Get(0).([]platform.CommandExecutionReport)
 		fn(_reports)
 	})
 	return _c
@@ -209,7 +209,7 @@ func (_c *storeSendCommandReportsCall) OnListPendingCommands() *storeListPending
 	return _c.Parent.OnListPendingCommands()
 }
 
-func (_c *storeSendCommandReportsCall) OnSendCommandReports(reports []platform.CommandReport) *storeSendCommandReportsCall {
+func (_c *storeSendCommandReportsCall) OnSendCommandReports(reports []platform.CommandExecutionReport) *storeSendCommandReportsCall {
 	return _c.Parent.OnSendCommandReports(reports)
 }
 
@@ -236,14 +236,14 @@ func newHandlerMock(tb testing.TB) *handlerMock {
 	return m
 }
 
-func (_m *handlerMock) Handle(_ context.Context, id string, requestedAt time.Time, data json.RawMessage) *platform.CommandReport {
+func (_m *handlerMock) Handle(_ context.Context, id string, requestedAt time.Time, data json.RawMessage) *platform.CommandExecutionReport {
 	_ret := _m.Called(id, requestedAt, data)
 
-	if _rf, ok := _ret.Get(0).(func(string, time.Time, json.RawMessage) *platform.CommandReport); ok {
+	if _rf, ok := _ret.Get(0).(func(string, time.Time, json.RawMessage) *platform.CommandExecutionReport); ok {
 		return _rf(id, requestedAt, data)
 	}
 
-	_ra0, _ := _ret.Get(0).(*platform.CommandReport)
+	_ra0, _ := _ret.Get(0).(*platform.CommandExecutionReport)
 
 	return _ra0
 }
@@ -301,12 +301,12 @@ func (_c *handlerHandleCall) Maybe() *handlerHandleCall {
 	return _c
 }
 
-func (_c *handlerHandleCall) TypedReturns(a *platform.CommandReport) *handlerHandleCall {
+func (_c *handlerHandleCall) TypedReturns(a *platform.CommandExecutionReport) *handlerHandleCall {
 	_c.Call = _c.Return(a)
 	return _c
 }
 
-func (_c *handlerHandleCall) ReturnsFn(fn func(string, time.Time, json.RawMessage) *platform.CommandReport) *handlerHandleCall {
+func (_c *handlerHandleCall) ReturnsFn(fn func(string, time.Time, json.RawMessage) *platform.CommandExecutionReport) *handlerHandleCall {
 	_c.Call = _c.Return(fn)
 	return _c
 }

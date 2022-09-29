@@ -62,11 +62,11 @@ type objectMetadata struct {
 }
 
 // Handle sets an ACP on an Ingress.
-func (c *SetIngressACPCommand) Handle(ctx context.Context, id string, requestedAt time.Time, data json.RawMessage) *platform.CommandReport {
+func (c *SetIngressACPCommand) Handle(ctx context.Context, id string, requestedAt time.Time, data json.RawMessage) *platform.CommandExecutionReport {
 	var payload setIngressACPPayload
 	if err := json.Unmarshal(data, &payload); err != nil {
 		log.Ctx(ctx).Error().Err(err).Msg("Ingress not found")
-		return newInternalErrorCommandReport(id, err)
+		return newInternalErrorReport(id, err)
 	}
 
 	logger := log.Ctx(ctx).With().
@@ -77,7 +77,7 @@ func (c *SetIngressACPCommand) Handle(ctx context.Context, id string, requestedA
 	name, ns, ok := extractNameNamespaceFromIngressID(payload.IngressID)
 	if !ok {
 		logger.Error().Msg("Unable to extract name and namespace from the given IngressID")
-		return newErrorCommandReport(id, reportErrorTypeInvalidIngressID)
+		return newErrorReport(id, reportErrorTypeInvalidIngressID)
 	}
 
 	ingresses := c.k8sClientSet.NetworkingV1().Ingresses(ns)
@@ -85,11 +85,11 @@ func (c *SetIngressACPCommand) Handle(ctx context.Context, id string, requestedA
 	if err != nil {
 		if kerror.IsNotFound(err) {
 			logger.Error().Err(err).Msg("Ingress not found")
-			return newErrorCommandReport(id, reportErrorTypeIngressNotFound)
+			return newErrorReport(id, reportErrorTypeIngressNotFound)
 		}
 
 		logger.Error().Err(err).Msg("Unable to find Ingress")
-		return newInternalErrorCommandReport(id, err)
+		return newInternalErrorReport(id, err)
 	}
 
 	var patchedAt time.Time
@@ -102,7 +102,7 @@ func (c *SetIngressACPCommand) Handle(ctx context.Context, id string, requestedA
 
 	if requestedAt.Before(patchedAt) || requestedAt.Equal(patchedAt) {
 		logger.Debug().Msg("Command already applied. Ignoring")
-		return newInternalErrorCommandReport(id, fmt.Errorf("operation already executed"))
+		return newInternalErrorReport(id, fmt.Errorf("operation already executed"))
 	}
 
 	mergePatch := ingressPatch{
@@ -117,19 +117,19 @@ func (c *SetIngressACPCommand) Handle(ctx context.Context, id string, requestedA
 	exists, err := c.acpExists(ctx, payload.ACPName)
 	if err != nil {
 		logger.Error().Err(err).Msg("Unable to find ACP")
-		return newInternalErrorCommandReport(id, err)
+		return newInternalErrorReport(id, err)
 	}
 	if !exists {
 		logger.Error().Err(err).Msg("ACP not found")
-		return newErrorCommandReport(id, reportErrorTypeACPNotFound)
+		return newErrorReport(id, reportErrorTypeACPNotFound)
 	}
 
 	if err = c.patchIngress(ctx, name, ns, mergePatch); err != nil {
 		logger.Error().Err(err).Msg("Unable to set ACP on ingress")
-		return newInternalErrorCommandReport(id, err)
+		return newInternalErrorReport(id, err)
 	}
 
-	return platform.NewSuccessCommandReport(id)
+	return platform.NewSuccessCommandExecutionReport(id)
 }
 
 func (c *SetIngressACPCommand) acpExists(ctx context.Context, acpName string) (bool, error) {

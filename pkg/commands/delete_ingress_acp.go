@@ -49,11 +49,11 @@ type deleteIngressACPPayload struct {
 }
 
 // Handle handles the ACP deletion on the given Ingress.
-func (c *DeleteIngressACPCommand) Handle(ctx context.Context, id string, requestedAt time.Time, data json.RawMessage) *platform.CommandReport {
+func (c *DeleteIngressACPCommand) Handle(ctx context.Context, id string, requestedAt time.Time, data json.RawMessage) *platform.CommandExecutionReport {
 	var payload deleteIngressACPPayload
 	if err := json.Unmarshal(data, &payload); err != nil {
 		log.Ctx(ctx).Error().Err(err).Msg("Unable to unmarshal command payload")
-		return newInternalErrorCommandReport(id, err)
+		return newInternalErrorReport(id, err)
 	}
 
 	logger := log.Ctx(ctx).With().Str("ingress_id", payload.IngressID).Logger()
@@ -61,7 +61,7 @@ func (c *DeleteIngressACPCommand) Handle(ctx context.Context, id string, request
 	name, ns, ok := extractNameNamespaceFromIngressID(payload.IngressID)
 	if !ok {
 		logger.Error().Msg("Unable to extract name and namespace from the given IngressID")
-		return newErrorCommandReport(id, reportErrorTypeInvalidIngressID)
+		return newErrorReport(id, reportErrorTypeInvalidIngressID)
 	}
 
 	logger = logger.With().Str("ingress_name", name).Str("ingress_namespace", ns).Logger()
@@ -71,11 +71,11 @@ func (c *DeleteIngressACPCommand) Handle(ctx context.Context, id string, request
 	if err != nil {
 		if kerror.IsNotFound(err) {
 			logger.Error().Err(err).Msg("Ingress not found")
-			return newErrorCommandReport(id, reportErrorTypeIngressNotFound)
+			return newErrorReport(id, reportErrorTypeIngressNotFound)
 		}
 
 		logger.Error().Err(err).Msg("Unable to find Ingress")
-		return newInternalErrorCommandReport(id, err)
+		return newInternalErrorReport(id, err)
 	}
 
 	var patchedAt time.Time
@@ -88,7 +88,7 @@ func (c *DeleteIngressACPCommand) Handle(ctx context.Context, id string, request
 
 	if requestedAt.Before(patchedAt) || requestedAt.Equal(patchedAt) {
 		logger.Debug().Msg("Command already applied. Ignoring")
-		return newInternalErrorCommandReport(id, fmt.Errorf("operation already executed"))
+		return newInternalErrorReport(id, fmt.Errorf("operation already executed"))
 	}
 
 	mergePatch := ingressPatch{
@@ -102,10 +102,10 @@ func (c *DeleteIngressACPCommand) Handle(ctx context.Context, id string, request
 
 	if err = c.patchIngress(ctx, name, ns, mergePatch); err != nil {
 		logger.Error().Err(err).Msg("Unable to delete ingress ACP")
-		return newInternalErrorCommandReport(id, err)
+		return newInternalErrorReport(id, err)
 	}
 
-	return platform.NewSuccessCommandReport(id)
+	return platform.NewSuccessCommandExecutionReport(id)
 }
 
 func (c *DeleteIngressACPCommand) patchIngress(ctx context.Context, name, ns string, patch ingressPatch) error {

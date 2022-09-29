@@ -48,7 +48,7 @@ func TestWatcher_applyPendingCommands_skipsUnknownCommands(t *testing.T) {
 
 	doSomethingHandler := newHandlerMock(t)
 	doSomethingHandler.OnHandle("command-2", now, []byte("hello")).
-		TypedReturns(platform.NewErrorCommandReport("command-2", platform.CommandReportError{
+		TypedReturns(platform.NewErrorCommandExecutionReport("command-2", platform.CommandExecutionReportError{
 			Type: string(reportErrorTypeIngressNotFound),
 		})).
 		Once()
@@ -56,11 +56,11 @@ func TestWatcher_applyPendingCommands_skipsUnknownCommands(t *testing.T) {
 	store := newStoreMock(t)
 	store.OnListPendingCommands().TypedReturns(pendingCommands, nil).Once()
 
-	store.OnSendCommandReports([]platform.CommandReport{
-		*platform.NewErrorCommandReport("command-1", platform.CommandReportError{
+	store.OnSendCommandReports([]platform.CommandExecutionReport{
+		*platform.NewErrorCommandExecutionReport("command-1", platform.CommandExecutionReportError{
 			Type: string(reportErrorTypeUnsupportedCommand),
 		}),
-		*platform.NewErrorCommandReport("command-2", platform.CommandReportError{
+		*platform.NewErrorCommandExecutionReport("command-2", platform.CommandExecutionReportError{
 			Type: string(reportErrorTypeIngressNotFound),
 		}),
 	}).TypedReturns(nil).Once()
@@ -105,22 +105,22 @@ func TestWatcher_applyPendingCommands_appliedByDate(t *testing.T) {
 	doSomethingHandler := newHandlerMock(t)
 	doSomethingHandler.
 		OnHandle("command-1", now.Add(-2*time.Hour), []byte("command-1")).
-		TypedReturns(platform.NewSuccessCommandReport("command-1")).
+		TypedReturns(platform.NewSuccessCommandExecutionReport("command-1")).
 		Run(assertNthCall(t, 0)).
 		Once()
 
 	doSomethingHandler.
 		OnHandle("command-2", now, []byte("command-2")).
-		TypedReturns(platform.NewSuccessCommandReport("command-2")).
+		TypedReturns(platform.NewSuccessCommandExecutionReport("command-2")).
 		Run(assertNthCall(t, 1)).
 		Once()
 
 	commands := newStoreMock(t)
 	commands.OnListPendingCommands().TypedReturns(pendingCommands, nil).Once()
 
-	commands.OnSendCommandReports([]platform.CommandReport{
-		*platform.NewSuccessCommandReport("command-1"),
-		*platform.NewSuccessCommandReport("command-2"),
+	commands.OnSendCommandReports([]platform.CommandExecutionReport{
+		*platform.NewSuccessCommandExecutionReport("command-1"),
+		*platform.NewSuccessCommandExecutionReport("command-2"),
 	}).TypedReturns(nil).Once()
 
 	w := NewWatcher(commands, nil, nil)

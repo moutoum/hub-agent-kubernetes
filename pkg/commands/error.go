@@ -29,14 +29,14 @@ const (
 	reportErrorTypeACPNotFound        reportErrorType = "acp-not-found"
 )
 
-func newErrorCommandReport(commandID string, typ reportErrorType) *platform.CommandReport {
-	return platform.NewErrorCommandReport(commandID, platform.CommandReportError{
+func newErrorReport(commandID string, typ reportErrorType) *platform.CommandExecutionReport {
+	return platform.NewErrorCommandExecutionReport(commandID, platform.CommandExecutionReportError{
 		Type: string(typ),
 	})
 }
 
-func newInternalErrorCommandReport(commandID string, err error) *platform.CommandReport {
-	return platform.NewErrorCommandReport(commandID, platform.CommandReportError{
+func newInternalErrorReport(commandID string, err error) *platform.CommandExecutionReport {
+	return platform.NewErrorCommandExecutionReport(commandID, platform.CommandExecutionReportError{
 		Type: string(reportErrorTypeInternalError),
 		Data: err,
 	})
