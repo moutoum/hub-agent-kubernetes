@@ -36,12 +36,12 @@ const AnnotationLastPatchRequestedAt = "hub.traefik.io/last-patch-requested-at"
 // Store is capable of fetching commands and sending command reports.
 type Store interface {
 	ListPendingCommands(ctx context.Context) ([]platform.Command, error)
-	SendCommandReports(ctx context.Context, reports []platform.CommandReport) error
+	UpdateCommands(ctx context.Context, reports []platform.CommandExecutionReport) error
 }
 
 // Handler can handle a command.
 type Handler interface {
-	Handle(ctx context.Context, id string, requestedAt time.Time, data json.RawMessage) *platform.CommandReport
+	Handle(ctx context.Context, id string, requestedAt time.Time, data json.RawMessage) *platform.CommandExecutionReport
 }
 
 // Watcher watches and applies the patch commands from the platform.
@@ -95,10 +95,10 @@ func (w *Watcher) applyPendingCommands(ctx context.Context) {
 		return commands[i].CreatedAt.Before(commands[j].CreatedAt)
 	})
 
-	var reports []platform.CommandReport
+	var reports []platform.CommandExecutionReport
 
 	for _, command := range commands {
-		var report *platform.CommandReport
+		var report *platform.CommandExecutionReport
 
 		handler, ok := w.commands[command.Type]
 		if !ok {
@@ -106,7 +106,7 @@ func (w *Watcher) applyPendingCommands(ctx context.Context) {
 				Str("command", command.Type).
 				Msg("Command unsupported on this agent version")
 
-			reports = append(reports, *newErrorCommandReport(command.ID, reportErrorTypeUnsupportedCommand))
+			reports = append(reports, *newErrorReport(command.ID, reportErrorTypeUnsupportedCommand))
 			continue
 		}
 
@@ -124,7 +124,7 @@ func (w *Watcher) applyPendingCommands(ctx context.Context) {
 		return
 	}
 
-	if err = w.store.SendCommandReports(ctx, reports); err != nil {
+	if err = w.store.UpdateCommands(ctx, reports); err != nil {
 		logger.Error().Err(err).Msg("Failed to send command reports")
 	}
 }

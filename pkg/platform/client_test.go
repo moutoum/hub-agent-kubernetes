@@ -1445,14 +1445,14 @@ func TestClient_SendCommandReports(t *testing.T) {
 	tests := []struct {
 		desc           string
 		statusCode     int
-		commandReports []CommandReport
+		commandReports []CommandExecutionReport
 		wantBody       []byte
 		wantErr        error
 	}{
 		{
 			desc:       "send command reports succeed",
 			statusCode: http.StatusOK,
-			commandReports: []CommandReport{
+			commandReports: []CommandExecutionReport{
 				{
 					ID:     "cmd-1",
 					Status: "success",
@@ -1460,7 +1460,7 @@ func TestClient_SendCommandReports(t *testing.T) {
 				{
 					ID:     "cmd-2",
 					Status: "failure",
-					Error: &CommandReportError{
+					Error: &CommandExecutionReportError{
 						Type: "something-went-wrong",
 						Data: &reportErrorData{Value: 42},
 					},
@@ -1468,7 +1468,7 @@ func TestClient_SendCommandReports(t *testing.T) {
 				{
 					ID:     "cmd-3",
 					Status: "failure",
-					Error: &CommandReportError{
+					Error: &CommandExecutionReportError{
 						Type: "something-went-wrong",
 					},
 				},
@@ -1487,7 +1487,7 @@ func TestClient_SendCommandReports(t *testing.T) {
 		{
 			desc:       "send command reports unexpected error",
 			statusCode: http.StatusTeapot,
-			commandReports: []CommandReport{
+			commandReports: []CommandExecutionReport{
 				{
 					ID:     "cmd-1",
 					Status: "success",
@@ -1544,7 +1544,7 @@ func TestClient_SendCommandReports(t *testing.T) {
 			require.NoError(t, err)
 			c.httpClient = srv.Client()
 
-			err = c.SendCommandReports(context.Background(), test.commandReports)
+			err = c.UpdateCommands(context.Background(), test.commandReports)
 			if test.wantErr != nil {
 				require.ErrorAs(t, err, test.wantErr)
 			} else {

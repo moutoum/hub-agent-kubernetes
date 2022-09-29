@@ -77,7 +77,7 @@ func TestSetIngressACPCommand_Handle_success(t *testing.T) {
 	wantIngress.Annotations["hub.traefik.io/access-control-policy"] = "my-acp"
 	wantIngress.Annotations["hub.traefik.io/last-patch-requested-at"] = createdAt.Format(time.RFC3339)
 
-	assert.Equal(t, platform.NewSuccessCommandReport("command-id"), report)
+	assert.Equal(t, platform.NewSuccessCommandExecutionReport("command-id"), report)
 	assert.Equal(t, wantIngress, updatedIngress)
 }
 
@@ -95,7 +95,7 @@ func TestSetIngressACPCommand_Handle_ingressNotFound(t *testing.T) {
 
 	report := handler.Handle(ctx, "command-id", createdAt, data)
 
-	assert.Equal(t, platform.NewErrorCommandReport("command-id", platform.CommandReportError{
+	assert.Equal(t, platform.NewErrorCommandExecutionReport("command-id", platform.CommandExecutionReportError{
 		Type: "ingress-not-found",
 	}), report)
 }
@@ -124,7 +124,7 @@ func TestSetIngressACPCommand_Handle_acpNotFound(t *testing.T) {
 
 	report := handler.Handle(ctx, "command-id", createdAt, data)
 
-	assert.Equal(t, platform.NewErrorCommandReport("command-id", platform.CommandReportError{
+	assert.Equal(t, platform.NewErrorCommandExecutionReport("command-id", platform.CommandExecutionReportError{
 		Type: "acp-not-found",
 	}), report)
 }
@@ -177,7 +177,7 @@ func TestSetIngressACPCommand_Handle_replace(t *testing.T) {
 	wantIngress.Annotations["hub.traefik.io/access-control-policy"] = "my-acp-2"
 	wantIngress.Annotations["hub.traefik.io/last-patch-requested-at"] = createdAt.Format(time.RFC3339)
 
-	assert.Equal(t, platform.NewSuccessCommandReport("command-id"), report)
+	assert.Equal(t, platform.NewSuccessCommandExecutionReport("command-id"), report)
 	assert.Equal(t, wantIngress, updatedIngress)
 }
 
@@ -213,7 +213,7 @@ func TestSetIngressACPCommand_Handle_oldCommand(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, ingress, updatedIngress)
-	assert.Equal(t, platform.NewErrorCommandReport("command-id", platform.CommandReportError{
+	assert.Equal(t, platform.NewErrorCommandExecutionReport("command-id", platform.CommandExecutionReportError{
 		Type: "internal-error",
 		Data: errors.New("operation already executed"),
 	}), report)

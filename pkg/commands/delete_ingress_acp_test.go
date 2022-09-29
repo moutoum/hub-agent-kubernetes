@@ -65,7 +65,7 @@ func TestDeleteIngressACPCommand_Handle_success(t *testing.T) {
 	delete(wantIngress.Annotations, "hub.traefik.io/access-control-policy")
 	wantIngress.Annotations["hub.traefik.io/last-patch-requested-at"] = createdAt.Format(time.RFC3339)
 
-	assert.Equal(t, platform.NewSuccessCommandReport("command-id"), report)
+	assert.Equal(t, platform.NewSuccessCommandExecutionReport("command-id"), report)
 	assert.Equal(t, wantIngress, updatedIngress)
 }
 
@@ -82,7 +82,7 @@ func TestDeleteIngressACPCommand_Handle_ingressNotFound(t *testing.T) {
 
 	report := handler.Handle(ctx, "command-id", createdAt, data)
 
-	assert.Equal(t, platform.NewErrorCommandReport("command-id", platform.CommandReportError{
+	assert.Equal(t, platform.NewErrorCommandExecutionReport("command-id", platform.CommandExecutionReportError{
 		Type: "ingress-not-found",
 	}), report)
 }
@@ -119,7 +119,7 @@ func TestDeleteIngressACPCommand_Handle_nothingDoDelete(t *testing.T) {
 	wantIngress := ingress
 	wantIngress.Annotations["hub.traefik.io/last-patch-requested-at"] = createdAt.Format(time.RFC3339)
 
-	assert.Equal(t, platform.NewSuccessCommandReport("command-id"), report)
+	assert.Equal(t, platform.NewSuccessCommandExecutionReport("command-id"), report)
 	assert.Equal(t, wantIngress, updatedIngress)
 }
 

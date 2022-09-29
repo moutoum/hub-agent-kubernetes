@@ -107,8 +107,8 @@ const (
 	CommandExecutionStatusFailure CommandExecutionStatus = "failure"
 )
 
-// CommandReportError holds details about an execution failure.
-type CommandReportError struct {
+// CommandExecutionReportError holds details about an execution failure.
+type CommandExecutionReportError struct {
 	// Type identifies the reason of the error.
 	Type string `json:"type"`
 
@@ -116,25 +116,25 @@ type CommandReportError struct {
 	Data interface{} `json:"data,omitempty"`
 }
 
-// CommandReport describes the output of a command execution.
-type CommandReport struct {
-	ID     string                 `json:"id"`
-	Status CommandExecutionStatus `json:"status"`
-	Error  *CommandReportError    `json:"error,omitempty"`
+// CommandExecutionReport describes the output of a command execution.
+type CommandExecutionReport struct {
+	ID     string                       `json:"id"`
+	Status CommandExecutionStatus       `json:"status"`
+	Error  *CommandExecutionReportError `json:"error,omitempty"`
 }
 
-// NewErrorCommandReport creates a new CommandReport with a status CommandExecutionStatusFailure.
-func NewErrorCommandReport(id string, err CommandReportError) *CommandReport {
-	return &CommandReport{
+// NewErrorCommandExecutionReport creates a new CommandExecutionReport with a status CommandExecutionStatusFailure.
+func NewErrorCommandExecutionReport(id string, err CommandExecutionReportError) *CommandExecutionReport {
+	return &CommandExecutionReport{
 		ID:     id,
 		Status: CommandExecutionStatusFailure,
 		Error:  &err,
 	}
 }
 
-// NewSuccessCommandReport creates a new CommandReport with a status CommandExecutionStatusSuccess.
-func NewSuccessCommandReport(id string) *CommandReport {
-	return &CommandReport{
+// NewSuccessCommandExecutionReport creates a new CommandExecutionReport with a status CommandExecutionStatusSuccess.
+func NewSuccessCommandExecutionReport(id string) *CommandExecutionReport {
+	return &CommandExecutionReport{
 		ID:     id,
 		Status: CommandExecutionStatusSuccess,
 	}
@@ -914,8 +914,8 @@ func (c *Client) ListPendingCommands(ctx context.Context) ([]Command, error) {
 	return commands, nil
 }
 
-// SendCommandReports sends the given command reports.
-func (c *Client) SendCommandReports(ctx context.Context, reports []CommandReport) error {
+// UpdateCommands updates the commands with the given command execution reports.
+func (c *Client) UpdateCommands(ctx context.Context, reports []CommandExecutionReport) error {
 	baseURL, err := c.baseURL.Parse(path.Join(c.baseURL.Path, "commands"))
 	if err != nil {
 		return fmt.Errorf("parse endpoint: %w", err)
