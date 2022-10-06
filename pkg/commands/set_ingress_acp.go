@@ -26,25 +26,32 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/traefik/hub-agent-kubernetes/pkg/acp/admission/reviewer"
-	hubclientset "github.com/traefik/hub-agent-kubernetes/pkg/crd/generated/client/hub/clientset/versioned"
+	traefikclientset "github.com/traefik/hub-agent-kubernetes/pkg/crd/generated/client/traefik/clientset/versioned"
 	"github.com/traefik/hub-agent-kubernetes/pkg/platform"
-	kerror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 )
 
+const (
+	ingressKeyKind      = "ingress"
+	ingressRouteKeyKind = "ingressroute"
+)
+
 // SetIngressACPCommand sets the given ACP on a specific Ingress.
 type SetIngressACPCommand struct {
-	k8sClientSet clientset.Interface
-	hubClientSet hubclientset.Interface
+	k8sClientSet     clientset.Interface
+	traefikClientSet traefikclientset.Interface
 }
 
 // NewSetIngressACPCommand creates a new SetIngressACPCommand.
-func NewSetIngressACPCommand(k8sClientSet clientset.Interface, hubClientSet hubclientset.Interface) *SetIngressACPCommand {
+func NewSetIngressACPCommand(
+	k8sClientSet clientset.Interface,
+	traefikClientSet traefikclientset.Interface,
+) *SetIngressACPCommand {
 	return &SetIngressACPCommand{
-		k8sClientSet: k8sClientSet,
-		hubClientSet: hubClientSet,
+		k8sClientSet:     k8sClientSet,
+		traefikClientSet: traefikClientSet,
 	}
 }
 
@@ -74,105 +81,72 @@ func (c *SetIngressACPCommand) Handle(ctx context.Context, id string, requestedA
 		Str("acp_name", payload.ACPName).
 		Logger()
 
-	name, ns, ok := extractNameNamespaceFromIngressID(payload.IngressID)
+	key, ok := parseIngressKey(payload.IngressID)
 	if !ok {
-		logger.Error().Msg("Unable to extract name and namespace from the given IngressID")
-		return newErrorReport(id, reportErrorTypeInvalidIngressID)
+		logger.Error().Msg("Unable to parse IngressID")
+		return newErrorReportWithType(id, reportErrorTypeIngressNotFound)
 	}
 
-	ingresses := c.k8sClientSet.NetworkingV1().Ingresses(ns)
-	ingress, err := ingresses.Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		if kerror.IsNotFound(err) {
-			logger.Error().Err(err).Msg("Ingress not found")
-			return newErrorReport(id, reportErrorTypeIngressNotFound)
-		}
-
-		logger.Error().Err(err).Msg("Unable to find Ingress")
-		return newInternalErrorReport(id, err)
-	}
-
-	var patchedAt time.Time
-	if s, ok := ingress.Annotations[AnnotationLastPatchRequestedAt]; ok {
-		patchedAt, err = time.Parse(time.RFC3339, s)
-		if err != nil {
-			logger.Warn().Err(err).Msgf("Unexpected %q annotation format, expected RFC-3339 format. Ignoring annotation", AnnotationLastPatchRequestedAt)
-		}
-	}
-
-	if requestedAt.Before(patchedAt) || requestedAt.Equal(patchedAt) {
-		logger.Debug().Msg("Command already applied. Ignoring")
-		return newInternalErrorReport(id, fmt.Errorf("operation already executed"))
-	}
-
-	mergePatch := ingressPatch{
+	patch, err := json.Marshal(ingressPatch{
 		ObjectMetadata: objectMetadata{
 			Annotations: map[string]*string{
 				AnnotationLastPatchRequestedAt: stringPtr(requestedAt.Format(time.RFC3339)),
 				reviewer.AnnotationHubAuth:     stringPtr(payload.ACPName),
 			},
 		},
-	}
-
-	exists, err := c.acpExists(ctx, payload.ACPName)
+	})
 	if err != nil {
-		logger.Error().Err(err).Msg("Unable to find ACP")
 		return newInternalErrorReport(id, err)
-	}
-	if !exists {
-		logger.Error().Err(err).Msg("ACP not found")
-		return newErrorReport(id, reportErrorTypeACPNotFound)
 	}
 
-	if err = c.patchIngress(ctx, name, ns, mergePatch); err != nil {
-		logger.Error().Err(err).Msg("Unable to set ACP on ingress")
-		return newInternalErrorReport(id, err)
+	switch key.Kind {
+	case ingressKeyKind:
+		_, err = c.k8sClientSet.NetworkingV1().
+			Ingresses(key.Namespace).
+			Patch(ctx, key.Name, ktypes.MergePatchType, patch, metav1.PatchOptions{})
+	case ingressRouteKeyKind:
+		_, err = c.traefikClientSet.TraefikV1alpha1().
+			IngressRoutes(key.Namespace).
+			Patch(ctx, key.Name, ktypes.MergePatchType, patch, metav1.PatchOptions{})
+	default:
+		return newInternalErrorReport(id, fmt.Errorf("unsupported resource of kind %q", key.Kind))
+	}
+	if err != nil {
+		return newErrorReport(id, err)
 	}
 
 	return platform.NewSuccessCommandExecutionReport(id)
 }
 
-func (c *SetIngressACPCommand) acpExists(ctx context.Context, acpName string) (bool, error) {
-	_, err := c.hubClientSet.HubV1alpha1().AccessControlPolicies().Get(ctx, acpName, metav1.GetOptions{})
-	if err != nil {
-		if kerror.IsNotFound(err) {
-			return false, nil
-		}
-
-		return false, err
-	}
-
-	return true, nil
+type ingressKey struct {
+	Name      string
+	Namespace string
+	Kind      string
+	Group     string
 }
 
-func (c *SetIngressACPCommand) patchIngress(ctx context.Context, name, ns string, patch ingressPatch) error {
-	rawPatch, err := json.Marshal(patch)
-	if err != nil {
-		return err
+func parseIngressKey(key string) (ingressKey, bool) {
+	keyParts := strings.Split(key, ".")
+	if len(keyParts) < 3 {
+		return ingressKey{}, false
 	}
 
-	ingresses := c.k8sClientSet.NetworkingV1().Ingresses(ns)
-
-	_, err = ingresses.Patch(ctx, name, ktypes.MergePatchType, rawPatch, metav1.PatchOptions{})
-	if err != nil {
-		return err
+	objectParts := strings.Split(keyParts[0], "@")
+	if len(objectParts) != 2 {
+		return ingressKey{}, false
 	}
 
-	return nil
-}
-
-func extractNameNamespaceFromIngressID(ingressID string) (name, namespace string, ok bool) {
-	parts := strings.Split(ingressID, ".")
-	if len(parts) < 3 {
-		return "", "", false
+	ns := objectParts[1]
+	if ns == "" {
+		ns = "default"
 	}
 
-	keyParts := strings.Split(parts[0], "@")
-	if len(keyParts) != 2 {
-		return "", "", false
-	}
-
-	return keyParts[0], keyParts[1], true
+	return ingressKey{
+		Name:      objectParts[0],
+		Namespace: ns,
+		Kind:      keyParts[1],
+		Group:     strings.Join(keyParts[2:], "."),
+	}, true
 }
 
 func stringPtr(s string) *string {

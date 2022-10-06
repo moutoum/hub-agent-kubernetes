@@ -1613,7 +1613,7 @@ func TestClient_SendCommandReports(t *testing.T) {
 			require.NoError(t, err)
 			c.httpClient = srv.Client()
 
-			err = c.UpdateCommands(context.Background(), test.commandReports)
+			err = c.SubmitCommandReports(context.Background(), test.commandReports)
 			if test.wantErr != nil {
 				require.ErrorAs(t, err, test.wantErr)
 			} else {

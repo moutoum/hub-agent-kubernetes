@@ -25,8 +25,8 @@ import (
 
 	"github.com/rs/zerolog/log"
 	"github.com/traefik/hub-agent-kubernetes/pkg/acp/admission/reviewer"
+	traefikclientset "github.com/traefik/hub-agent-kubernetes/pkg/crd/generated/client/traefik/clientset/versioned"
 	"github.com/traefik/hub-agent-kubernetes/pkg/platform"
-	kerror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	ktypes "k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
@@ -34,13 +34,15 @@ import (
 
 // DeleteIngressACPCommand removes the ACP of a given Ingress.
 type DeleteIngressACPCommand struct {
-	k8sClientSet clientset.Interface
+	k8sClientSet     clientset.Interface
+	traefikClientSet traefikclientset.Interface
 }
 
 // NewDeleteIngressACPCommand creates a new DeleteIngressACPCommand.
-func NewDeleteIngressACPCommand(k8sClientSet clientset.Interface) *DeleteIngressACPCommand {
+func NewDeleteIngressACPCommand(k8sClientSet clientset.Interface, traefikClientSet traefikclientset.Interface) *DeleteIngressACPCommand {
 	return &DeleteIngressACPCommand{
-		k8sClientSet: k8sClientSet,
+		k8sClientSet:     k8sClientSet,
+		traefikClientSet: traefikClientSet,
 	}
 }
 
@@ -58,68 +60,40 @@ func (c *DeleteIngressACPCommand) Handle(ctx context.Context, id string, request
 
 	logger := log.Ctx(ctx).With().Str("ingress_id", payload.IngressID).Logger()
 
-	name, ns, ok := extractNameNamespaceFromIngressID(payload.IngressID)
+	key, ok := parseIngressKey(payload.IngressID)
 	if !ok {
-		logger.Error().Msg("Unable to extract name and namespace from the given IngressID")
-		return newErrorReport(id, reportErrorTypeInvalidIngressID)
+		logger.Error().Msg("Unable to parse IngressID")
+		return newErrorReportWithType(id, reportErrorTypeIngressNotFound)
 	}
 
-	logger = logger.With().Str("ingress_name", name).Str("ingress_namespace", ns).Logger()
-
-	ingresses := c.k8sClientSet.NetworkingV1().Ingresses(ns)
-	ingress, err := ingresses.Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		if kerror.IsNotFound(err) {
-			logger.Error().Err(err).Msg("Ingress not found")
-			return newErrorReport(id, reportErrorTypeIngressNotFound)
-		}
-
-		logger.Error().Err(err).Msg("Unable to find Ingress")
-		return newInternalErrorReport(id, err)
-	}
-
-	var patchedAt time.Time
-	if s, ok := ingress.Annotations[AnnotationLastPatchRequestedAt]; ok {
-		patchedAt, err = time.Parse(time.RFC3339, s)
-		if err != nil {
-			logger.Warn().Err(err).Msgf("Unexpected %q annotation format, expected RFC-3339 format. Ignoring annotation", AnnotationLastPatchRequestedAt)
-		}
-	}
-
-	if requestedAt.Before(patchedAt) || requestedAt.Equal(patchedAt) {
-		logger.Debug().Msg("Command already applied. Ignoring")
-		return newInternalErrorReport(id, fmt.Errorf("operation already executed"))
-	}
-
-	mergePatch := ingressPatch{
+	patch, err := json.Marshal(ingressPatch{
 		ObjectMetadata: objectMetadata{
 			Annotations: map[string]*string{
 				AnnotationLastPatchRequestedAt: stringPtr(requestedAt.Format(time.RFC3339)),
 				reviewer.AnnotationHubAuth:     nil,
 			},
 		},
-	}
-
-	if err = c.patchIngress(ctx, name, ns, mergePatch); err != nil {
-		logger.Error().Err(err).Msg("Unable to delete ingress ACP")
+	})
+	if err != nil {
 		return newInternalErrorReport(id, err)
 	}
 
+	switch key.Kind {
+	case ingressKeyKind:
+		_, err = c.k8sClientSet.NetworkingV1().
+			Ingresses(key.Namespace).
+			Patch(ctx, key.Name, ktypes.MergePatchType, patch, metav1.PatchOptions{})
+	case ingressRouteKeyKind:
+		_, err = c.traefikClientSet.TraefikV1alpha1().
+			IngressRoutes(key.Namespace).
+			Patch(ctx, key.Name, ktypes.MergePatchType, patch, metav1.PatchOptions{})
+	default:
+		return newInternalErrorReport(id, fmt.Errorf("unsupported resource of kind %q", key.Kind))
+	}
+
+	if err != nil {
+		return newErrorReport(id, err)
+	}
+
 	return platform.NewSuccessCommandExecutionReport(id)
-}
-
-func (c *DeleteIngressACPCommand) patchIngress(ctx context.Context, name, ns string, patch ingressPatch) error {
-	rawPatch, err := json.Marshal(patch)
-	if err != nil {
-		return err
-	}
-
-	ingresses := c.k8sClientSet.NetworkingV1().Ingresses(ns)
-
-	_, err = ingresses.Patch(ctx, name, ktypes.MergePatchType, rawPatch, metav1.PatchOptions{})
-	if err != nil {
-		return err
-	}
-
-	return nil
 }

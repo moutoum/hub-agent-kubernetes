@@ -20,12 +20,14 @@ package admission
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/rs/zerolog/log"
 	"github.com/traefik/hub-agent-kubernetes/pkg/acp/admission/reviewer"
 	admv1 "k8s.io/api/admission/v1"
+	kerror "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -74,13 +76,23 @@ func (h Handler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if err != nil {
 		log.Ctx(ctx).Error().Err(err).Msg("Unable to handle admission request")
 
+		result := metav1.Status{
+			Status: "Failure",
+			Reason: metav1.StatusReasonUnknown,
+		}
+
+		// Propagate kubernetes status error in the reviewer response. A not found error
+		// during the review process will be returned as it is to the caller.
+		var statusErr *kerror.StatusError
+		if errors.As(err, &statusErr) {
+			result = statusErr.Status()
+		}
+
+		result.Message = err.Error()
 		ar.Response = &admv1.AdmissionResponse{
 			Allowed: false,
-			Result: &metav1.Status{
-				Status:  "Failure",
-				Message: err.Error(),
-			},
-			UID: ar.Request.UID,
+			Result:  &result,
+			UID:     ar.Request.UID,
 		}
 	} else {
 		ar.Response = &admv1.AdmissionResponse{

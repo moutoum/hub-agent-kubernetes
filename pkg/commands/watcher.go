@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
-	hubclientset "github.com/traefik/hub-agent-kubernetes/pkg/crd/generated/client/hub/clientset/versioned"
+	traefikclientset "github.com/traefik/hub-agent-kubernetes/pkg/crd/generated/client/traefik/clientset/versioned"
 	"github.com/traefik/hub-agent-kubernetes/pkg/platform"
 	clientset "k8s.io/client-go/kubernetes"
 )
@@ -36,7 +36,7 @@ const AnnotationLastPatchRequestedAt = "hub.traefik.io/last-patch-requested-at"
 // Store is capable of fetching commands and sending command reports.
 type Store interface {
 	ListPendingCommands(ctx context.Context) ([]platform.Command, error)
-	UpdateCommands(ctx context.Context, reports []platform.CommandExecutionReport) error
+	SubmitCommandReports(ctx context.Context, reports []platform.CommandExecutionReport) error
 }
 
 // Handler can handle a command.
@@ -51,12 +51,12 @@ type Watcher struct {
 }
 
 // NewWatcher creates a Watcher.
-func NewWatcher(store Store, k8sClientSet clientset.Interface, hubClientSet hubclientset.Interface) *Watcher {
+func NewWatcher(store Store, k8sClientSet clientset.Interface, traefikClientSet traefikclientset.Interface) *Watcher {
 	return &Watcher{
 		store: store,
 		commands: map[string]Handler{
-			"set-ingress-acp":    NewSetIngressACPCommand(k8sClientSet, hubClientSet),
-			"delete-ingress-acp": NewDeleteIngressACPCommand(k8sClientSet),
+			"set-ingress-acp":    NewSetIngressACPCommand(k8sClientSet, traefikClientSet),
+			"delete-ingress-acp": NewDeleteIngressACPCommand(k8sClientSet, traefikClientSet),
 		},
 	}
 }
@@ -106,7 +106,7 @@ func (w *Watcher) applyPendingCommands(ctx context.Context) {
 				Str("command", command.Type).
 				Msg("Command unsupported on this agent version")
 
-			reports = append(reports, *newErrorReport(command.ID, reportErrorTypeUnsupportedCommand))
+			reports = append(reports, *newErrorReportWithType(command.ID, reportErrorTypeUnsupportedCommand))
 			continue
 		}
 
@@ -124,7 +124,7 @@ func (w *Watcher) applyPendingCommands(ctx context.Context) {
 		return
 	}
 
-	if err = w.store.UpdateCommands(ctx, reports); err != nil {
+	if err = w.store.SubmitCommandReports(ctx, reports); err != nil {
 		logger.Error().Err(err).Msg("Failed to send command reports")
 	}
 }

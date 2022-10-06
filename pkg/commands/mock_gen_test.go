@@ -122,7 +122,7 @@ func (_c *storeListPendingCommandsCall) OnSendCommandReportsRaw(reports interfac
 	return _c.Parent.OnSendCommandReportsRaw(reports)
 }
 
-func (_m *storeMock) UpdateCommands(_ context.Context, reports []platform.CommandExecutionReport) error {
+func (_m *storeMock) SubmitCommandReports(_ context.Context, reports []platform.CommandExecutionReport) error {
 	_ret := _m.Called(reports)
 
 	if _rf, ok := _ret.Get(0).(func([]platform.CommandExecutionReport) error); ok {
@@ -135,11 +135,11 @@ func (_m *storeMock) UpdateCommands(_ context.Context, reports []platform.Comman
 }
 
 func (_m *storeMock) OnSendCommandReports(reports []platform.CommandExecutionReport) *storeSendCommandReportsCall {
-	return &storeSendCommandReportsCall{Call: _m.Mock.On("UpdateCommands", reports), Parent: _m}
+	return &storeSendCommandReportsCall{Call: _m.Mock.On("SubmitCommandReports", reports), Parent: _m}
 }
 
 func (_m *storeMock) OnSendCommandReportsRaw(reports interface{}) *storeSendCommandReportsCall {
-	return &storeSendCommandReportsCall{Call: _m.Mock.On("UpdateCommands", reports), Parent: _m}
+	return &storeSendCommandReportsCall{Call: _m.Mock.On("SubmitCommandReports", reports), Parent: _m}
 }
 
 type storeSendCommandReportsCall struct {

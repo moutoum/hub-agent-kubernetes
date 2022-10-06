@@ -962,9 +962,9 @@ func (c *Client) ListPendingCommands(ctx context.Context) ([]Command, error) {
 	return commands, nil
 }
 
-// UpdateCommands updates the commands with the given command execution reports.
-func (c *Client) UpdateCommands(ctx context.Context, reports []CommandExecutionReport) error {
-	baseURL, err := c.baseURL.Parse(path.Join(c.baseURL.Path, "commands"))
+// SubmitCommandReports submits the given command execution reports.
+func (c *Client) SubmitCommandReports(ctx context.Context, reports []CommandExecutionReport) error {
+	baseURL, err := c.baseURL.Parse(path.Join(c.baseURL.Path, "command-reports"))
 	if err != nil {
 		return fmt.Errorf("parse endpoint: %w", err)
 	}

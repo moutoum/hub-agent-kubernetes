@@ -251,6 +251,7 @@ func setupAdmissionHandlers(ctx context.Context, platformClient *platform.Client
 	traefikReviewer := reviewer.NewTraefikIngress(ingClassWatcher, fwdAuthMdlwrs)
 	reviewers := []admission.Reviewer{
 		reviewer.NewNginxIngress(authServerAddr, ingClassWatcher, polGetter),
+		reviewer.NewTraefikIngressRoute(fwdAuthMdlwrs),
 		traefikReviewer,
 	}
 
