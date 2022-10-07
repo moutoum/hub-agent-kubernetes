@@ -974,7 +974,7 @@ func (c *Client) SubmitCommandReports(ctx context.Context, reports []CommandExec
 		return fmt.Errorf("marshal command reports: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPut, baseURL.String(), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL.String(), bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}

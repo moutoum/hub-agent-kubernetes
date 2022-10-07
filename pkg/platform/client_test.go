@@ -1579,10 +1579,10 @@ func TestClient_SendCommandReports(t *testing.T) {
 			var callCount int
 
 			mux := http.NewServeMux()
-			mux.HandleFunc("/commands", func(rw http.ResponseWriter, req *http.Request) {
+			mux.HandleFunc("/command-reports", func(rw http.ResponseWriter, req *http.Request) {
 				callCount++
 
-				if req.Method != http.MethodPut {
+				if req.Method != http.MethodPost {
 					http.Error(rw, fmt.Sprintf("unsupported method: %s", req.Method), http.StatusMethodNotAllowed)
 					return
 				}
