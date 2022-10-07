@@ -98,8 +98,6 @@ func (w *Watcher) applyPendingCommands(ctx context.Context) {
 	var reports []platform.CommandExecutionReport
 
 	for _, command := range commands {
-		var report *platform.CommandExecutionReport
-
 		handler, ok := w.commands[command.Type]
 		if !ok {
 			logger.Error().
@@ -114,7 +112,7 @@ func (w *Watcher) applyPendingCommands(ctx context.Context) {
 			Str("command_type", command.Type).
 			Logger().WithContext(ctx)
 
-		report = handler.Handle(execCtx, command.ID, command.CreatedAt, command.Data)
+		report := handler.Handle(execCtx, command.ID, command.CreatedAt, command.Data)
 		if report != nil {
 			reports = append(reports, *report)
 		}
